@@ -45,8 +45,7 @@ def train_model(data_path: str) -> None:
     model = LogisticRegression(
         max_iter=LR_MAX_ITER,
         C=LR_C,
-        solver="lbfgs",
-        class_weight="balanced"
+        solver="lbfgs"
     )
 
     model.fit(X_train, y_train)
