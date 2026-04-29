@@ -15,16 +15,18 @@ from src.models.predict import predict
 
 
 # ── UI Config ─────────────────────────────────────────────
+
 st.set_page_config(
     page_title="Mental Health Sentiment Analyzer",
     page_icon="🧠",
     layout="wide",
 )
 
-st.title("🧠 Mental Health Sentiment Analyzer (YouTube Comments)")
+st.title("🧠 Mental Health Sentiment Analyzer")
 
 
-# ── Helper ───────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────
+
 def truncate_text(text: str, max_chars: int = 150) -> str:
     return text if len(text) <= max_chars else text[:max_chars] + "..."
 
@@ -37,49 +39,12 @@ LABEL_EMOJI = {
 }
 
 
-# ── Input Section ─────────────────────────────────────────
-video_url = st.text_input(
-    "Enter YouTube Video URL",
-    placeholder="https://www.youtube.com/watch?v=..."
-)
+def show_results(results):
+    """
+    Display prediction results in Streamlit.
+    """
 
-max_comments = st.slider(
-    "Number of comments to analyze",
-    20, 200, 100, step=10
-)
-
-run = st.button("Analyze Comments", use_container_width=True)
-
-
-# ── Pipeline ─────────────────────────────────────────────
-if run:
-
-    if not video_url.strip():
-        st.error("Please enter a valid YouTube URL")
-        st.stop()
-
-    fetcher = YouTubeFetcher(max_comments=max_comments)
-
-    # Fetch comments
-    with st.spinner("Fetching comments..."):
-        comments = fetcher.fetch_comments(video_url)
-
-    if not comments:
-        st.warning("No comments found or comments disabled")
-        st.stop()
-
-    # Predict
-    with st.spinner("Analyzing sentiment..."):
-        try:
-            results = predict(comments)
-        except FileNotFoundError:
-            st.error("Model not found. Run training first:\n\npython -m src.models.train")
-            st.stop()
-        except Exception as e:
-            st.error(f"Prediction error: {e}")
-            st.stop()
-
-    # ── Summary ─────────────────────────────────────────
+    # Summary
     st.subheader("📊 Summary")
 
     counts = {}
@@ -91,7 +56,7 @@ if run:
 
     for col, label in zip(cols, labels):
         count = counts.get(label, 0)
-        pct = (count / len(results)) * 100
+        pct = (count / len(results)) * 100 if results else 0
 
         col.metric(
             label=f"{LABEL_EMOJI[label]} {label}",
@@ -99,36 +64,145 @@ if run:
             delta=f"{pct:.1f}%"
         )
 
-    # ── Results ─────────────────────────────────────────
+    # Detailed Results
     st.subheader("📋 Comment Analysis")
 
     for r in results:
 
-        # Highlight risky comments
         if r["label"] == "depressive indicators":
-            st.error(f"⚠️ HIGH RISK\n\n{truncate_text(r['text'])}")
+            st.error(
+                f"⚠️ HIGH RISK SIGNAL\n\n"
+                f"{truncate_text(r['text'])}"
+            )
         else:
-            st.markdown(f"**{truncate_text(r['text'])}**")
+            st.markdown(
+                f"**{truncate_text(r['text'])}**"
+            )
 
         st.caption(r["interpretation"])
-        st.write(f"{LABEL_EMOJI[r['label']]} **{r['label']}**")
+        st.write(
+            f"{LABEL_EMOJI[r['label']]} **{r['label']}**"
+        )
         st.divider()
 
 
-# ── Demo Mode ───────────────────────────────────────────
+# ── Input Section ─────────────────────────────────────────
+
+st.subheader("🎥 YouTube Video Analysis")
+
+video_url = st.text_input(
+    "Enter YouTube Video URL",
+    placeholder="https://www.youtube.com/watch?v=..."
+)
+
+max_comments = st.slider(
+    "Number of comments to analyze",
+    min_value=20,
+    max_value=200,
+    value=100,
+    step=10,
+)
+
+st.markdown("---")
+
+st.subheader("✍️ Manual Comment Input")
+
+manual_input = st.text_area(
+    "Enter comments manually (one comment per line)",
+    height=200,
+    placeholder="""
+I feel tired and alone
+I am stressed about exams
+Life is going well today
+Nothing matters anymore
+"""
+)
+
+run = st.button(
+    "Analyze Comments",
+    use_container_width=True
+)
+
+
+# ── Main Pipeline ─────────────────────────────────────────
+
+if run:
+
+    comments = []
+
+    # Priority 1 → Manual Input
+    if manual_input.strip():
+        comments = [
+            line.strip()
+            for line in manual_input.split("\n")
+            if line.strip()
+        ]
+
+    # Priority 2 → YouTube URL
+    elif video_url.strip():
+        fetcher = YouTubeFetcher(
+            max_comments=max_comments
+        )
+
+        with st.spinner("Fetching YouTube comments..."):
+            comments = fetcher.fetch_comments(video_url)
+
+    else:
+        st.error(
+            "Please enter either:\n"
+            "- YouTube URL\n"
+            "- Manual comments"
+        )
+        st.stop()
+
+    if not comments:
+        st.warning(
+            "No valid comments found."
+        )
+        st.stop()
+
+    # Prediction
+    with st.spinner("Analyzing sentiment..."):
+        try:
+            results = predict(comments)
+
+        except FileNotFoundError:
+            st.error(
+                "Model not found.\n\n"
+                "Run training first:\n\n"
+                "python -m src.models.train"
+            )
+            st.stop()
+
+        except Exception as e:
+            st.error(
+                f"Prediction error: {str(e)}"
+            )
+            st.stop()
+
+    show_results(results)
+
+
+# ── Demo Mode ─────────────────────────────────────────────
+
 with st.expander("Try Demo (No YouTube needed)"):
 
     if st.button("Run Demo"):
 
-        demo = [
+        demo_comments = [
             "I feel empty and tired",
             "I am stressed about exams",
             "Life is amazing today",
             "Nothing matters anymore",
+            "I feel nervous about tomorrow",
         ]
 
-        results = predict(demo)
+        try:
+            results = predict(demo_comments)
+            show_results(results)
 
-        for r in results:
-            st.markdown(f"- {LABEL_EMOJI[r['label']]} {truncate_text(r['text'])}")
-            st.caption(r["interpretation"])
+        except FileNotFoundError:
+            st.warning(
+                "Train the model first:\n\n"
+                "python -m src.models.train"
+            )

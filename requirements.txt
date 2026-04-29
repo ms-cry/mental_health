@@ -1,7 +1,9 @@
 pandas
-numpy
+nump
+scipy
 scikit-learn
-nltk
-google-api-python-client
 joblib
 streamlit
+youtube-comment-downloader
+pytest
+loader
